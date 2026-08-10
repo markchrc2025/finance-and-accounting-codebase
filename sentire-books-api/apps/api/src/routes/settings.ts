@@ -2,7 +2,7 @@ import { Hono } from "hono";
 import { ZodError } from "zod";
 import { asc, eq, sql } from "drizzle-orm";
 import { z } from "zod";
-import { zOrgSettingsUpdate } from "@sentire-books/domain";
+import { zOrgSettingsUpdate, zApprovalRouting } from "@sentire-books/domain";
 import { withOrgContext, orgSettings, documentCounters } from "@sentire-books/db";
 import { requireAuth } from "../auth";
 import { reportError } from "../observability";
@@ -19,9 +19,17 @@ settingsRoutes.get("/", async (c) => {
     { userId: auth.userId, orgId: auth.orgId, role: auth.role },
     (tx) => tx.select().from(orgSettings).where(eq(orgSettings.orgId, auth.orgId)),
   );
+  // Reads stay LENIENT: a legacy or unrecognised blob is returned as-is with a
+  // validity flag, never a 500. The typed schema (M3.1) only gates WRITES.
+  const ar = row?.approvalRouting ?? null;
+  const approvalRoutingValid = ar === null ? null : zApprovalRouting.safeParse(ar).success;
   return c.json({
     profile: row?.profile ?? null,
-    approvalRouting: row?.approvalRouting ?? null,
+    approvalRouting: ar,
+    approvalRoutingValid,
+    ...(approvalRoutingValid === false
+      ? { approvalRoutingWarning: "Stored approval_routing does not match the typed schema; returned unvalidated." }
+      : {}),
     docNumbering: row?.docNumbering ?? null,
     modulePolicies: row?.modulePolicies ?? null,
   });

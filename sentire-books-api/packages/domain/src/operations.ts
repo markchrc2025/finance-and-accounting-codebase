@@ -101,10 +101,85 @@ export const zDisbursementStatusUpdate = z.object({
   reason: optionalTrimmed(500),
 });
 
+// ── Approval routing (M3.1) ──────────────────────────────────────────────────
+// Typed parser for org_settings.approval_routing. The store stays jsonb; this is
+// what the server applies on PUT /settings so garbage stops being storable
+// (previously `z.record(z.unknown())` — anything saved). The shape mirrors
+// EXACTLY what the Settings screen writes today — routes + delegates, the
+// portal's own field names and its five document-type labels
+// (MILESTONE-3-PROPOSAL.md §2:93-100) — so no existing portal save breaks.
+// Objects strip unknown keys rather than rejecting them, keeping the settings
+// screen alive on any older stored row while still validating types/enums/emails.
+// The `voucher | journal_entry` vocabulary is the M3.2 resolver's internal
+// mapping target (§2:177), NOT the stored routing label — these stay portal
+// labels. New M3 fields are optional; nothing honors them until M3.2/M3.3.
+export const ROUTING_DOCUMENT_TYPES = [
+  "Vouchers",
+  "Check Voucher",
+  "Journal",
+  "Weekly Projections",
+  "Disbursements",
+] as const;
+export type RoutingDocumentType = (typeof ROUTING_DOCUMENT_TYPES)[number];
+
+const lc = (v: unknown) => (typeof v === "string" ? v.trim().toLowerCase() : v);
+const zEmail = z.preprocess(lc, z.string().email("must be a valid email address"));
+const zEmailOrBlank = z.preprocess(
+  lc,
+  z.string().refine((s) => s === "" || z.string().email().safeParse(s).success, {
+    message: "must be a valid email address or blank",
+  }),
+);
+const zIsoDateOrBlank = z.preprocess(
+  (v) => (typeof v === "string" ? v.trim() : v),
+  z.string().refine((s) => s === "" || /^\d{4}-\d{2}-\d{2}$/.test(s), {
+    message: "date must be YYYY-MM-DD or blank",
+  }),
+);
+
+export const zApprovalRoute = z.object({
+  id: z.string().min(1),
+  documentType: z.enum(ROUTING_DOCUMENT_TYPES),
+  makerEmail: zEmail,
+  verifierEmail: zEmailOrBlank.default(""),
+  approverEmail: zEmail,
+  autoBypass: z.boolean().default(false),
+});
+export type ApprovalRoute = z.infer<typeof zApprovalRoute>;
+
+export const zApprovalDelegate = z.object({
+  id: z.string().min(1),
+  delegatorEmail: zEmail,
+  delegateEmail: zEmail,
+  documentTypes: z.array(z.enum(ROUTING_DOCUMENT_TYPES)).default([]),
+  fromDate: zIsoDateOrBlank.default(""),
+  toDate: zIsoDateOrBlank.default(""),
+  isActive: z.boolean().default(true),
+});
+export type ApprovalDelegate = z.infer<typeof zApprovalDelegate>;
+
+export const zApprovalRouting = z
+  .object({
+    routes: z.array(zApprovalRoute).default([]),
+    delegates: z.array(zApprovalDelegate).default([]),
+    // Typed now, honored later (M3.2/M3.3). Optional so the current portal
+    // payload — which omits them — validates unchanged.
+    singleOperatorMode: z.boolean().optional(),
+    strictMode: z.boolean().optional(),
+    requireVerification: z.boolean().optional(),
+  })
+  // Strict at the TOP level so a wholesale-wrong blob (e.g. a legacy shape with
+  // none of these keys) is flagged unvalidated on read, instead of silently
+  // passing as "empty routing". Sub-objects stay strip-mode: an older stored
+  // route carrying an extra field is normalised, never rejected, so the portal
+  // (which re-sends whole route objects via `{...route}`) can never be 400'd.
+  .strict();
+export type ApprovalRouting = z.infer<typeof zApprovalRouting>;
+
 // ── Org settings ─────────────────────────────────────────────────────────────
 export const zOrgSettingsUpdate = z.object({
   profile: z.record(z.unknown()).nullable().optional(),
-  approvalRouting: z.record(z.unknown()).nullable().optional(),
+  approvalRouting: zApprovalRouting.nullable().optional(),
   docNumbering: z.record(z.unknown()).nullable().optional(),
   modulePolicies: z.record(z.unknown()).nullable().optional(),
 });
