@@ -20,6 +20,7 @@ import TaxPage             from './tax/TaxPage.jsx';
 import FinancialPage       from './financial/FinancialPage.jsx';
 import FixedAssetsPage     from './assets/FixedAssetsPage.jsx';
 import ServiceInvoicesPage from './invoices/ServiceInvoicesPage.jsx';
+import InvoiceIssuancePage from './invoices/InvoiceIssuancePage.jsx';
 import CollectionsPage     from './collections/CollectionsPage.jsx';
 import SettingsPage        from './settings/SettingsPage.jsx';
 import UserProfilePage     from './settings/UserProfilePage.jsx';
@@ -27,6 +28,7 @@ import ReportBuilderPage   from './reports/ReportBuilderPage';
 import ReportsLandingPage  from './reports/ReportsLandingPage';
 
 import { PermissionsProvider, usePermissions } from '../../contexts/PermissionsContext.jsx';
+import { isDeferredModule } from '../../config/deferredModules.js';
 import AccessDenied from '../../components/AccessDenied.jsx';
 import { LeftRail } from '../../components/shell/LeftRail.tsx';
 import { TopBar } from '../../components/shell/TopBar.tsx';
@@ -128,6 +130,7 @@ function ScaleBooksAppInner() {
             <Route path="billing"           element={<ModuleGuard module="Billing Book"><BillingPage /></ModuleGuard>} />
             <Route path="billing/:clientId" element={<ModuleGuard module="Billing Book"><BillingClientPage /></ModuleGuard>} />
             <Route path="invoices"          element={<ModuleGuard module="Service Invoices"><ServiceInvoicesPage /></ModuleGuard>} />
+            <Route path="invoices/new"      element={<ModuleGuard module="Service Invoices"><InvoiceIssuancePage /></ModuleGuard>} />
             <Route path="collections"       element={<ModuleGuard module="Collections"><CollectionsPage /></ModuleGuard>} />
 
             {/* Reports */}
