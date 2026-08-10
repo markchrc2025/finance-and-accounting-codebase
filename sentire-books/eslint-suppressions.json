@@ -19,11 +19,6 @@
       "count": 3
     }
   },
-  "src/modules/scalebooks/ScaleBooksApp.jsx": {
-    "no-undef": {
-      "count": 1
-    }
-  },
   "src/modules/scalebooks/approvals/ApprovalsPage.jsx": {
     "@typescript-eslint/no-unused-expressions": {
       "count": 1

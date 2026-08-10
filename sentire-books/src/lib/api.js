@@ -256,6 +256,18 @@ export const schedulePaymentsApi = crud('/schedule-payments', 'payments', 'payme
 /** Issue a draft invoice — posts its revenue entry (T1/T2/T3). */
 export const issueInvoice = (id, opts) =>
   apiFetch(`/service-invoices/${id}/issue`, { method: 'POST', body: JSON.stringify(opts || {}) });
+/**
+ * SEAM (Track B B2). Preview the journal entry an issuance WOULD post, without
+ * posting it — so the screen can show DR/CR lines and the tax split before the
+ * user commits. The server MUST compute this (no browser-side VAT arithmetic).
+ *
+ * This endpoint does NOT exist on main yet; until Track A ships
+ * `POST /service-invoices/:id/issue-preview`, this call 404s and the preview
+ * panel renders its honest "unavailable" state rather than fabricating figures.
+ * Contract specified verbatim in the B2 report (A1 ii).
+ */
+export const previewInvoiceIssuance = (id, opts) =>
+  apiFetch(`/service-invoices/${id}/issue-preview`, { method: 'POST', body: JSON.stringify(opts || {}) });
 /** Cancel an invoice — reverses its issuance entry. Never deleted. */
 export const cancelInvoice = (id) =>
   apiFetch(`/service-invoices/${id}/cancel`, { method: 'POST', body: '{}' });
