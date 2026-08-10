@@ -17,7 +17,7 @@
  */
 import { describe, it, expect, beforeAll, afterAll } from "vitest";
 import { Hono } from "hono";
-import { eq, inArray, sql } from "drizzle-orm";
+import { eq, sql } from "drizzle-orm";
 import {
   withOrgContext,
   accounts,
@@ -88,19 +88,21 @@ async function registry(qs = ""): Promise<Registry> {
 }
 
 let seq = 0;
+let expenseAccountId: string; // resolved once in beforeAll (was an N+1 lookup per voucher)
 const madeVouchers: string[] = [];
 const madeInvoices: string[] = [];
 
-/** A Payment voucher with one tax-bearing line. Meta money is in PESOS. */
+/**
+ * A Payment voucher with one tax-bearing line. Meta money is in PESOS.
+ *
+ * Header + line are inserted in ONE transaction so an interrupted call can never
+ * leave a committed voucher that `madeVouchers` never recorded — the phantom
+ * that the old three-transaction version produced when the 62-voucher fixture
+ * tripped vitest's 5 s timeout mid-loop.
+ */
 async function taxVoucher(date: string, taxPesos: number, grossCents = 1_000_000) {
-  const [acct] = await withOrgContext(ctx, (tx) =>
-    tx
-      .select({ id: accounts.id })
-      .from(accounts)
-      .where(sql`${accounts.orgId} = ${DEMO_ORG_ID} AND ${accounts.code} = ${EXPENSE}`),
-  );
-  const [v] = await withOrgContext(ctx, (tx) =>
-    tx
+  return withOrgContext(ctx, async (tx) => {
+    const [v] = await tx
       .insert(vouchers)
       .values({
         orgId: DEMO_ORG_ID,
@@ -111,20 +113,49 @@ async function taxVoucher(date: string, taxPesos: number, grossCents = 1_000_000
         purposeCategory: "Supplies",
         createdBy: DEMO_ADMIN_ID,
       } as never)
-      .returning(),
-  );
-  madeVouchers.push(v!.id);
-  await withOrgContext(ctx, (tx) =>
-    tx.insert(voucherLines).values({
+      .returning();
+    madeVouchers.push(v!.id);
+    await tx.insert(voucherLines).values({
       voucherId: v!.id,
       lineNo: 1,
-      accountId: acct!.id,
+      accountId: expenseAccountId,
       description: "Taxable purchase",
       amountCents: grossCents,
       meta: { taxAmt: taxPesos, taxType: "VAT 12%", taxRate: 12, inclusive: false, contact: "Supplier Co" },
-    } as never),
-  );
-  return v!;
+    } as never);
+    return v!;
+  });
+}
+
+/**
+ * Bulk builder for the "no truncation" fixture. Inserts every voucher and every
+ * line in a SINGLE transaction (two statements total), instead of the old
+ * 62 × 3-transaction loop that fired ~740 round trips and timed out. All specs
+ * here are uniform, so RETURNING order does not affect the line values.
+ */
+async function taxVouchersBulk(specs: Array<{ date: string; taxPesos: number; grossCents?: number }>) {
+  await withOrgContext(ctx, async (tx) => {
+    const voucherRows = specs.map((s) => ({
+      orgId: DEMO_ORG_ID,
+      voucherNo: `PV-T${Date.now() % 1e6}-${++seq}`,
+      voucherType: "payment",
+      voucherDate: s.date,
+      status: "approved",
+      purposeCategory: "Supplies",
+      createdBy: DEMO_ADMIN_ID,
+    }));
+    const inserted = await tx.insert(vouchers).values(voucherRows as never).returning({ id: vouchers.id });
+    inserted.forEach((v) => madeVouchers.push(v.id));
+    const lineRows = inserted.map((v, i) => ({
+      voucherId: v.id,
+      lineNo: 1,
+      accountId: expenseAccountId,
+      description: "Taxable purchase",
+      amountCents: specs[i]!.grossCents ?? 1_000_000,
+      meta: { taxAmt: specs[i]!.taxPesos, taxType: "VAT 12%", taxRate: 12, inclusive: false, contact: "Supplier Co" },
+    }));
+    await tx.insert(voucherLines).values(lineRows as never);
+  });
 }
 
 /** An issued VATable invoice — the sales side. */
@@ -146,30 +177,68 @@ async function vatInvoice(date: string) {
   return invoice;
 }
 
+/**
+ * Purge by CONTENT, not by tracked id. The registry aggregates the WHOLE org,
+ * so a single row that escaped `madeVouchers` (or leaked from another suite)
+ * corrupts every count. Deleting every payment/check voucher and every service
+ * invoice in the demo org makes each test start from a provably empty tax
+ * surface — deterministic regardless of what leaked, and date-independent.
+ */
 async function reset() {
-  if (madeVouchers.length) {
-    await withOrgContext(ctx, (tx) =>
-      tx.delete(voucherLines).where(inArray(voucherLines.voucherId, madeVouchers)),
-    );
-    await withOrgContext(ctx, (tx) => tx.delete(vouchers).where(inArray(vouchers.id, madeVouchers)));
-    madeVouchers.length = 0;
+  // Purchases: every payment/check voucher (+ its lines) in the demo org.
+  await withOrgContext(ctx, (tx) =>
+    tx.execute(sql`
+      DELETE FROM voucher_lines vl USING vouchers v
+      WHERE vl.voucher_id = v.id AND v.org_id = ${DEMO_ORG_ID}
+        AND v.voucher_type IN ('payment', 'check')`),
+  );
+  await withOrgContext(ctx, (tx) =>
+    tx.execute(sql`
+      DELETE FROM vouchers
+      WHERE org_id = ${DEMO_ORG_ID} AND voucher_type IN ('payment', 'check')`),
+  );
+  // Sales: reverse each issued invoice's JE (ledger hygiene), then remove every
+  // service invoice in the org.
+  const invs = await withOrgContext(ctx, (tx) =>
+    tx
+      .select({
+        id: serviceInvoices.id,
+        status: serviceInvoices.status,
+        je: serviceInvoices.bookingJournalEntryId,
+      })
+      .from(serviceInvoices)
+      .where(eq(serviceInvoices.orgId, DEMO_ORG_ID)),
+  );
+  const DEAD = ["Cancelled", "Voided", "Rejected"];
+  for (const inv of invs) {
+    if (inv.je && !DEAD.includes(inv.status)) {
+      await withOrgContext(ctx, (tx) =>
+        tx.update(serviceInvoices).set({ appliedCents: 0 }).where(eq(serviceInvoices.id, inv.id)),
+      );
+      await call("POST", `/invoices/${inv.id}/cancel`, {});
+    }
   }
-  for (const id of madeInvoices) {
-    await withOrgContext(ctx, (tx) =>
-      tx.update(serviceInvoices).set({ appliedCents: 0 }).where(eq(serviceInvoices.id, id)),
-    );
-    await call("POST", `/invoices/${id}/cancel`, {});
-    await withOrgContext(ctx, (tx) => tx.delete(serviceInvoices).where(eq(serviceInvoices.id, id)));
-  }
+  await withOrgContext(ctx, (tx) =>
+    tx.delete(serviceInvoices).where(eq(serviceInvoices.orgId, DEMO_ORG_ID)),
+  );
+  madeVouchers.length = 0;
   madeInvoices.length = 0;
 }
 
 describe.skipIf(!RUN)("M2.5 — tax registry", () => {
   const saved = { secret: process.env.AUTH_JWT_SECRET, bypass: process.env.AUTH_DEV_BYPASS };
 
-  beforeAll(() => {
+  beforeAll(async () => {
     delete process.env.AUTH_JWT_SECRET;
     process.env.AUTH_DEV_BYPASS = "true";
+    // Resolve the expense account once, not per fixture voucher.
+    const [acct] = await withOrgContext(ctx, (tx) =>
+      tx
+        .select({ id: accounts.id })
+        .from(accounts)
+        .where(sql`${accounts.orgId} = ${DEMO_ORG_ID} AND ${accounts.code} = ${EXPENSE}`),
+    );
+    expenseAccountId = acct!.id;
   });
 
   afterAll(async () => {
@@ -186,11 +255,13 @@ describe.skipIf(!RUN)("M2.5 — tax registry", () => {
     it("returns ALL tax-bearing vouchers, well past the old 50 cap", async () => {
       await reset();
       const COUNT = 62; // > 50, so the old slice would have dropped 12
-      for (let i = 0; i < COUNT; i++) {
-        // Spread across months so truncation would also lose whole PERIODS.
-        const month = String((i % 12) + 1).padStart(2, "0");
-        await taxVoucher(`2025-${month}-${String((i % 28) + 1).padStart(2, "0")}`, 120);
-      }
+      // Spread across months so truncation would also lose whole PERIODS.
+      await taxVouchersBulk(
+        Array.from({ length: COUNT }, (_, i) => ({
+          date: `2025-${String((i % 12) + 1).padStart(2, "0")}-${String((i % 28) + 1).padStart(2, "0")}`,
+          taxPesos: 120,
+        })),
+      );
 
       const r = await registry();
       expect(r.counts.purchases).toBe(COUNT);
