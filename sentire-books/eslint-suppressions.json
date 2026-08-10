@@ -1,0 +1,91 @@
+{
+  "src/components/ContactPicker.jsx": {
+    "@typescript-eslint/no-unused-expressions": {
+      "count": 1
+    }
+  },
+  "src/components/shell/CommandPalette.jsx": {
+    "@typescript-eslint/no-unused-expressions": {
+      "count": 1
+    }
+  },
+  "src/contexts/PrivacyContext.jsx": {
+    "no-empty": {
+      "count": 1
+    }
+  },
+  "src/hooks/useDashboardLayout.js": {
+    "no-empty": {
+      "count": 3
+    }
+  },
+  "src/modules/scalebooks/ScaleBooksApp.jsx": {
+    "no-undef": {
+      "count": 1
+    }
+  },
+  "src/modules/scalebooks/approvals/ApprovalsPage.jsx": {
+    "@typescript-eslint/no-unused-expressions": {
+      "count": 1
+    }
+  },
+  "src/modules/scalebooks/assets/FixedAssetsPage.jsx": {
+    "@typescript-eslint/no-unused-expressions": {
+      "count": 1
+    }
+  },
+  "src/modules/scalebooks/bank/BankPage.jsx": {
+    "react-hooks/rules-of-hooks": {
+      "count": 1
+    }
+  },
+  "src/modules/scalebooks/checks/CheckRegistryPage.jsx": {
+    "@typescript-eslint/no-unused-expressions": {
+      "count": 1
+    },
+    "react-hooks/rules-of-hooks": {
+      "count": 1
+    }
+  },
+  "src/modules/scalebooks/contacts/ContactsPage.jsx": {
+    "@typescript-eslint/no-unused-expressions": {
+      "count": 1
+    }
+  },
+  "src/modules/scalebooks/disbursements/DisbursementsPage.jsx": {
+    "@typescript-eslint/no-unused-expressions": {
+      "count": 1
+    }
+  },
+  "src/modules/scalebooks/financial/RecordPaymentModal.jsx": {
+    "@typescript-eslint/no-unused-expressions": {
+      "count": 1
+    }
+  },
+  "src/modules/scalebooks/journal/JournalPage.jsx": {
+    "@typescript-eslint/no-unused-expressions": {
+      "count": 2
+    }
+  },
+  "src/modules/scalebooks/projections/ProjectionsPage.jsx": {
+    "@typescript-eslint/no-unused-expressions": {
+      "count": 1
+    }
+  },
+  "src/modules/scalebooks/schedule/PaymentSchedulePage.jsx": {
+    "@typescript-eslint/no-unused-expressions": {
+      "count": 2
+    },
+    "react-hooks/rules-of-hooks": {
+      "count": 4
+    }
+  },
+  "src/modules/scalebooks/vouchers/VouchersPage.jsx": {
+    "@typescript-eslint/no-unused-expressions": {
+      "count": 1
+    },
+    "no-undef": {
+      "count": 6
+    }
+  }
+}
