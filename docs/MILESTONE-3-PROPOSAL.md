@@ -462,3 +462,127 @@ the API writes to a table that would not exist.
 ---
 
 I will not start M3.1 until you approve this and answer §6.
+
+---
+
+# PASS 4 — CORRECTIONS (M2.5 Amendment 1)
+
+> Appended per ruling R15. The reasoning above is left intact and is **not**
+> rewritten. These four corrections were raised against the enforcement design.
+> Note on provenance: A2 and A4 target the Pass-3 *`approval_events`* sketch
+> (the report that reviewed this milestone). Where the merged `workflow_events`
+> design in §3 already differs, that is stated rather than hidden.
+
+## C1 — (A2) A lifetime `UNIQUE (org_id, document_type, document_id, action)` blocks resubmission
+
+Confirmed defect. That constraint permits exactly **one** event of each action per
+document *for all time*. A document that is submitted → rejected → corrected →
+**resubmitted** cannot record its second `submit`; a re-review cannot record its
+second `verify`/`approve`. The history would silently drop real events — the
+opposite of an audit trail.
+
+Correction:
+
+- The history is an **append-only log**; repeated events of the same action across
+  a lifecycle are legitimate. **Remove any lifetime uniqueness on `action`.**
+  Ordering is `occurred_at` + the row `id`. The merged §3 `workflow_events`
+  **already does this** — it has three `occurred_at` indexes and no such UNIQUE,
+  so the merged design does not carry the defect; only the Pass-3 sketch did.
+- If idempotency *within one round* is wanted (guard a double-click posting two
+  `approve`s), scope it to the round, never the lifetime: add
+  `attempt integer NOT NULL DEFAULT 1` (incremented when a rejected document
+  re-enters the chain) and, if desired, `UNIQUE (org_id, document_type,
+  document_id, action, attempt)`. That still allows the second `submit` after a
+  rejection (new attempt) while rejecting an accidental duplicate inside one
+  attempt.
+
+## C2 — (A3) `actor_id text REFERENCES app_users(id)` is valid as written
+
+Verified against the schema, not inventory: `app_users.id` is **`text`**
+(`packages/db/src/schema.ts:101` — `id: text("id").primaryKey()…`; widened
+uuid→text in `0007_auth_text_ids.sql:14`, with `journal_entries.created_by` and
+`vouchers.created_by` already FK-ing it as text at `0007…:20`). So
+`actor_id text NOT NULL REFERENCES app_users(id)` (§3, line 277) **can be created
+as written** — text→text. The "inventory says uuid" concern does not hold; no
+change required.
+
+## C3 — (A4) The self-approval block is not a DB control unless the trigger learns the creator
+
+The Pass-3 report claimed self-approval is "blocked authoritatively in the DB via
+the history table's trigger," but never said how a trigger learns who created the
+document. The merged §3 trigger (`prevent_workflow_event_mutation`) enforces only
+append-only; it never reads the creator. So as written the block is
+**handler-only** (the authority function) — precisely the class of guard the §0
+probe walked through. Resolve one of two ways: **(a)** withdraw the "DB-enforced"
+wording and state plainly it is a handler rule, or **(b, recommended)** make it a
+real DB control — a `BEFORE INSERT` trigger on `workflow_events`:
+
+```sql
+CREATE FUNCTION enforce_segregation() RETURNS trigger LANGUAGE plpgsql AS $$
+DECLARE creator text; verifier text; solo boolean;
+BEGIN
+  IF NEW.action NOT IN ('approve','post') THEN RETURN NEW; END IF;
+
+  -- Dispatch on document_type to read the document's own created_by.
+  creator := CASE NEW.document_type
+    WHEN 'journal_entry' THEN (SELECT created_by FROM journal_entries
+                               WHERE id = NEW.document_id AND org_id = NEW.org_id)
+    ELSE                       (SELECT created_by FROM vouchers
+                               WHERE id = NEW.document_id AND org_id = NEW.org_id)
+  END;
+  -- The verifier is read from the history itself.
+  verifier := (SELECT actor_id FROM workflow_events
+               WHERE org_id = NEW.org_id AND document_type = NEW.document_type
+                 AND document_id = NEW.document_id AND action = 'verify'
+               ORDER BY occurred_at DESC LIMIT 1);
+  solo := COALESCE((SELECT (approval_routing->>'singleOperatorMode')::boolean
+                    FROM org_settings WHERE org_id = NEW.org_id), false);
+
+  IF NOT solo AND (NEW.actor_id = creator OR NEW.actor_id = verifier) THEN
+    RAISE EXCEPTION 'segregation of duties: % may not % a document they created or verified',
+      NEW.actor_id, NEW.action USING ERRCODE = 'restrict_violation';
+  END IF;
+  IF solo AND (NEW.actor_id = creator OR NEW.actor_id = verifier)
+     AND NEW.authority_basis IS DISTINCT FROM 'single_operator' THEN
+    RAISE EXCEPTION 'self-approval in a single-operator org must record authority_basis=single_operator'
+      USING ERRCODE = 'restrict_violation';
+  END IF;
+  RETURN NEW;
+END $$;
+```
+
+The trigger reads `created_by` from the document table (dispatched on
+`document_type`), the latest `verify` actor from the history, and the org mode
+from `org_settings`. The handler can drop the rule; the trigger cannot — which is
+the standard the ledger invariants already set.
+
+## C4 — (A4, second part) Single-operator mode
+
+A three-identity rule — or even the two-identity fallback — **locks a
+one-bookkeeper tenant out of its own ledger**, and many PH SMEs run exactly one
+person in the books. This supersedes §6 decision 3 ("Absolute for approve and
+post") for such orgs:
+
+- Add a server-validated boolean `singleOperatorMode`, typed into
+  `approval_routing` (per R4/R8) and read by the C3 trigger.
+- **Off (default):** segregation enforced as C3 — the invariant M3 establishes.
+- **On:** self-approval is **permitted**, but every self-approved event is written
+  with `authority_basis = 'single_operator'` (the trigger requires it) and
+  surfaced in history/reports as **UNSEGREGATED**. The trail states truthfully
+  that one person performed all steps.
+- Enabling the flag is itself an admin-only settings change that writes a
+  `workflow_events` row, so the choice to run unsegregated is on the record.
+
+An honest trail that one person did all three steps is worth more than a control
+that locks a paying customer out of their ledger.
+
+## Note (not A2–A4) — the history row carries only `occurred_at`
+
+Related to C1's ordering: §3 records only `occurred_at` (calendar time), not the
+document's accounting date. The Pass-3 report recommended **both** — the
+accounting-period date to tie an action to the fiscal period a future
+period-lock reasons about, the calendar time for forensics. Flagged for the §6
+decision set; not required by this amendment.
+
+_— M2.5 Amendment 1. Test baseline restored to green (245/245); no source,
+schema, or migration changed. This section is documentation only._
