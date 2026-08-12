@@ -38,9 +38,11 @@ const GROUPS = [
     label: 'Billing',
     icon: FileText,
     items: [
-      { label: 'Billing Book',     path: '/billing' },
-      { label: 'Service Invoices', path: '/invoices' },
-      { label: 'Collections',      path: '/collections' },
+      { label: 'Billing Book',      path: '/billing' },
+      { label: 'Service Invoices',  path: '/invoices' },
+      { label: 'Issue Invoice',     path: '/invoices/new' },
+      { label: 'Collections',       path: '/collections' },
+      { label: 'Record Collection', path: '/collections/new' },
     ],
   },
 ] as const;

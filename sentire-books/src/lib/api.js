@@ -274,6 +274,18 @@ export const cancelInvoice = (id) =>
 /** Post a collection against one or more invoices. */
 export const postCollection = (id, opts) =>
   apiFetch(`/collections/${id}/post`, { method: 'POST', body: JSON.stringify(opts || {}) });
+/**
+ * SEAM (Track B B3). Preview the journal entry a collection posting WOULD post
+ * (C1: DR Cash / DR CWT when EWT / CR Trade Receivable), plus the server-computed
+ * relief and applied/unapplied totals, WITHOUT posting. The server must compute
+ * it — no browser-side split, relief, sum or balance.
+ *
+ * Does NOT exist on main yet. Until Track A ships
+ * `POST /collections/:id/post-preview`, this 404s and the preview panel renders
+ * its honest "unavailable" state. Contract specified in the B3 report (A1 ii).
+ */
+export const previewCollectionPost = (id, opts) =>
+  apiFetch(`/collections/${id}/post-preview`, { method: 'POST', body: JSON.stringify(opts || {}) });
 /** Void a posted collection — reverses its entries and rolls the AR back. */
 export const voidCollection = (id) =>
   apiFetch(`/collections/${id}/void`, { method: 'POST', body: '{}' });
