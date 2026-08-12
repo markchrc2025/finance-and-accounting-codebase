@@ -22,6 +22,7 @@ import FixedAssetsPage     from './assets/FixedAssetsPage.jsx';
 import ServiceInvoicesPage from './invoices/ServiceInvoicesPage.jsx';
 import InvoiceIssuancePage from './invoices/InvoiceIssuancePage.jsx';
 import CollectionsPage     from './collections/CollectionsPage.jsx';
+import CollectionsPostingPage from './collections/CollectionsPostingPage.jsx';
 import SettingsPage        from './settings/SettingsPage.jsx';
 import UserProfilePage     from './settings/UserProfilePage.jsx';
 import ReportBuilderPage   from './reports/ReportBuilderPage';
@@ -132,6 +133,7 @@ function ScaleBooksAppInner() {
             <Route path="invoices"          element={<ModuleGuard module="Service Invoices"><ServiceInvoicesPage /></ModuleGuard>} />
             <Route path="invoices/new"      element={<ModuleGuard module="Service Invoices"><InvoiceIssuancePage /></ModuleGuard>} />
             <Route path="collections"       element={<ModuleGuard module="Collections"><CollectionsPage /></ModuleGuard>} />
+            <Route path="collections/new"   element={<ModuleGuard module="Collections"><CollectionsPostingPage /></ModuleGuard>} />
 
             {/* Reports */}
             <Route path="reports"              element={<ModuleGuard module="Reports"><ReportsLandingPage /></ModuleGuard>} />

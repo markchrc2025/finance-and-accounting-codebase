@@ -78,9 +78,6 @@
   "src/modules/scalebooks/vouchers/VouchersPage.jsx": {
     "@typescript-eslint/no-unused-expressions": {
       "count": 1
-    },
-    "no-undef": {
-      "count": 6
     }
   }
 }

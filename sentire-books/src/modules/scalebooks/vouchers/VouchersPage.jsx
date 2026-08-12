@@ -8,6 +8,7 @@ import {
 } from '../../../lib/api.js';
 import AccountCombobox from '../../../components/AccountCombobox.jsx';
 import ContactPicker from '../../../components/ContactPicker.jsx';
+import NewAccountModal from './NewAccountModal.jsx';
 import { consumeSchedulePrefill } from '../../../utils/schedulePrefill.js';
 import VoucherPdfModal from './VoucherPdfModal.jsx';
 
@@ -1420,98 +1421,17 @@ export default function VouchersPage() {
           </div>
         </div>
       )}
-      {/* New Account Modal */}
-      {newAcctModal && (
-        <div className="backdrop" onClick={()=>setNewAcctModal(null)}>
-          <div className="modal modal-sm" onClick={e=>e.stopPropagation()}>
-            <div className="modal-h">
-              <strong>New Account</strong>
-              <button className="btn btn-ghost btn-sm" onClick={()=>setNewAcctModal(null)}>✕</button>
-            </div>
-            <div className="modal-b" style={{display:'flex',flexDirection:'column',gap:12}}>
-              <div className="field">
-                <label>Account Code <span style={{color:'#ef4444'}}>*</span></label>
-                <input value={newAcctModal.code} onChange={e=>setNewAcctModal(m=>({...m,code:e.target.value}))} placeholder="e.g. 5001001" autoFocus />
-              </div>
-              <div className="field">
-                <label>Account Name <span style={{color:'#ef4444'}}>*</span></label>
-                <input value={newAcctModal.name} onChange={e=>setNewAcctModal(m=>({...m,name:e.target.value}))} placeholder="e.g. Office Supplies" />
-              </div>
-              <div className="field">
-                <label>Type</label>
-                <select value={newAcctModal.type} onChange={e=>setNewAcctModal(m=>({...m,type:e.target.value,subType:(ACCT_SUBTYPES[e.target.value]||[''])[0]}))}>                  {ACCT_TYPES.map(t=><option key={t}>{t}</option>)}
-                </select>
-              </div>
-              <div className="field">
-                <label>Sub-Type</label>
-                <select value={newAcctModal.subType} onChange={e=>setNewAcctModal(m=>({...m,subType:e.target.value}))}>
-                  {(ACCT_SUBTYPES[newAcctModal.type]||[]).map(s=><option key={s}>{s}</option>)}
-                </select>
-              </div>
-              <div className="field">
-                <label>Parent Account <span style={{color:'#94a3b8',fontWeight:400}}>(optional)</span></label>
-                <select value={newAcctModal.parent} onChange={e=>setNewAcctModal(m=>({...m,parent:e.target.value}))}>
-                  <option value="">— None —</option>
-                  {accounts.filter(a=>!a.parent).sort((a,b)=>(a.code||'').localeCompare(b.code||'')).map(a=><option key={a.code||a.id} value={a.code||a.id}>[{a.code}] {a.name}</option>)}
-                </select>
-              </div>
-            </div>
-            <div className="modal-f">
-              <button className="btn btn-ghost" onClick={()=>setNewAcctModal(null)}>Cancel</button>
-              <button className="btn btn-primary" onClick={handleSaveNewAcct} disabled={newAcctModal.saving || !newAcctModal.code.trim() || !newAcctModal.name.trim()}>
-                {newAcctModal.saving ? 'Saving…' : 'Create Account'}
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
+      {/* New Account Modal — extracted to NewAccountModal.jsx (Track B B4).
+          Was two byte-identical inline copies referencing undefined ACCT_TYPES /
+          ACCT_SUBTYPES; both are replaced by this single tested component. */}
+      <NewAccountModal
+        modal={newAcctModal}
+        onChange={setNewAcctModal}
+        accounts={accounts}
+        onCancel={() => setNewAcctModal(null)}
+        onSave={handleSaveNewAcct}
+      />
 
-      {/* New Account Modal */}
-      {newAcctModal && (
-        <div className="backdrop" onClick={()=>setNewAcctModal(null)}>
-          <div className="modal modal-sm" onClick={e=>e.stopPropagation()}>
-            <div className="modal-h">
-              <strong>New Account</strong>
-              <button className="btn btn-ghost btn-sm" onClick={()=>setNewAcctModal(null)}>✕</button>
-            </div>
-            <div className="modal-b" style={{display:'flex',flexDirection:'column',gap:12}}>
-              <div className="field">
-                <label>Account Code <span style={{color:'#ef4444'}}>*</span></label>
-                <input value={newAcctModal.code} onChange={e=>setNewAcctModal(m=>({...m,code:e.target.value}))} placeholder="e.g. 5001001" autoFocus />
-              </div>
-              <div className="field">
-                <label>Account Name <span style={{color:'#ef4444'}}>*</span></label>
-                <input value={newAcctModal.name} onChange={e=>setNewAcctModal(m=>({...m,name:e.target.value}))} placeholder="e.g. Office Supplies" />
-              </div>
-              <div className="field">
-                <label>Type</label>
-                <select value={newAcctModal.type} onChange={e=>setNewAcctModal(m=>({...m,type:e.target.value,subType:(ACCT_SUBTYPES[e.target.value]||[''])[0]}))}>
-                  {ACCT_TYPES.map(t=><option key={t}>{t}</option>)}
-                </select>
-              </div>
-              <div className="field">
-                <label>Sub-Type</label>
-                <select value={newAcctModal.subType} onChange={e=>setNewAcctModal(m=>({...m,subType:e.target.value}))}>
-                  {(ACCT_SUBTYPES[newAcctModal.type]||[]).map(s=><option key={s}>{s}</option>)}
-                </select>
-              </div>
-              <div className="field">
-                <label>Parent Account <span style={{color:'#94a3b8',fontWeight:400}}>(optional)</span></label>
-                <select value={newAcctModal.parent} onChange={e=>setNewAcctModal(m=>({...m,parent:e.target.value}))}>
-                  <option value="">— None —</option>
-                  {accounts.filter(a=>!a.parent).sort((a,b)=>(a.code||'').localeCompare(b.code||'')).map(a=><option key={a.code||a.id} value={a.code||a.id}>[{a.code}] {a.name}</option>)}
-                </select>
-              </div>
-            </div>
-            <div className="modal-f">
-              <button className="btn btn-ghost" onClick={()=>setNewAcctModal(null)}>Cancel</button>
-              <button className="btn btn-primary" onClick={handleSaveNewAcct} disabled={newAcctModal.saving || !newAcctModal.code.trim() || !newAcctModal.name.trim()}>
-                {newAcctModal.saving ? 'Saving…' : 'Create Account'}
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
       {toast && <div className="toast">{toast}</div>}
     </div>
   );
